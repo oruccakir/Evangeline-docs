@@ -159,7 +159,7 @@ Before running inference, you need to build the application. See the [Build & Co
 
 ```bash
 cd stories15M
-mkdir build && cd build
+mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
 ```
@@ -184,8 +184,8 @@ For quick testing without FPGA hardware:
 
 ```bash
 ./main \
-    --weight_path ../weights.bin \
-    --vocab_path ../tokenizer.bin \
+    --weight_path ../../models/stories15M/weights.bin \
+    --vocab_path  ../../models/stories15M/tokenizer.bin \
     --max_seq 256 \
     --temp 0.8
 ```
