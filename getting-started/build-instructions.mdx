@@ -1,0 +1,312 @@
+---
+title: "Build Instructions"
+description: "Complete guide to building Evangeline for CPU and FPGA targets"
+---
+
+## Build System Overview
+
+Evangeline uses a unified build system centered around `build.sh` that orchestrates:
+
+1. **FPGA Stage**: HLS kernel compilation and linking
+2. **Host Stage**: Cross-compilation of the host application
+3. **Package Stage**: SD card image generation
+4. **Emulation Stage**: Hardware emulation setup
+
+## Verify Tools
+
+```bash
+# first source the vitis settings to check the version
+source /path/to/Xilinx/2025.1/Vitis/settings64.sh
+
+# Check Vitis
+v++ --version
+
+# Check cross-compiler
+aarch64-linux-gnu-g++ --version
+
+# Check YAML parser
+yq --version
+```
+
+## Build Methods
+
+### Method 1: Using Configuration Files (Recommended)
+
+Build configurations are defined in YAML files under `build_configs/`.
+
+```bash
+# Full ResNet50 hardware build
+./build.sh --config=build_configs/resnet50_hw_build_v0/.yaml
+
+# Full Stories15M hardware build
+./build.sh --config=build_configs/tinyllama_hw_build_v0/.yaml
+```
+
+<Tip>
+Using a configuration file (`--config`) is highly recommended. It ensures all parameters (paths, stages, targets) are set correctly and makes it much easier to reproduce builds without typing long command-line arguments.
+</Tip>
+
+
+#### Example Configuration (`build_configs/resnet50_hw_build_v0/.yaml`)
+
+```yaml
+sw_platform_path: Software-Platforms/zcu102_custom_platform_vo/export/zcu102_custom_platform_vo/zcu102_custom_platform_vo.xpfm
+sys_root_path: Linux-Images/xilinx-zynqmp-common-v2025.1/sysroots/cortexa72-cortexa53-amd-linux
+host: resnet50
+target: hw
+src_dir: resnet50/src
+vitis_settings_path: /path/to//Xilinx/2025.1/Vitis/settings64.sh
+run_stage: host
+build_dir: Fpga-Build/resnet50_hw_build_v0
+sd_files:
+  - models/resnet50/labels.txt
+  - models/resnet50/weights.bin
+```
+
+#### Build Parameters Explanation
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sw_platform_path` | Path | Path to the Vitis software platform (`.xpfm`). |
+| `sys_root_path` | Path | Path to the Linux sysroot for cross-compilation. |
+| `host` | String | Name of the application/directory. |
+| `target` | String | `hw` (Hardware) or `hw_emu` (Emulation). |
+| `src_dir` | Path | Source code directory containing host and kernel files. |
+| `vitis_settings_path`| Path | Absolute path to Xilinx `settings64.sh`. |
+| `run_stage` | String | `all`, `fpga`, `host`, `package`, or `emulation`. |
+| `build_dir` | Path | Directory where build artifacts will be stored. |
+| `sd_files` | List | Files to be automatically copied to the SD card image. |
+| `boot_args` | String | (Optional) Custom Linux boot arguments. |
+
+
+### Method 2: Command-Line Parameters
+
+Override or provide parameters directly:
+
+```bash
+./build.sh \
+  --sysroot=/path/to/sysroots/cortexa72-cortexa53-amd-linux \
+  --xpfm=/path/to/platforms/zcu102_custom_platform_v0.xpfm \
+  --build-dir=Fpga-Build/my_build \
+  --host=resnet50 \
+  --target=hw \
+  --src-dir=resnet50/src
+```
+
+### Method 3: CPU-Only Build (CMake)
+
+For local development without FPGA:
+
+```bash
+cd resnet50
+mkdir -p build && cd build
+cmake .. 
+make -j$(nproc)
+```
+
+## Build Stages
+
+### Stage: FPGA (`--run-stage=fpga`)
+
+Compiles HLS kernels and links them into an FPGA binary.
+
+**What it does:**
+1. Discovers all `kernel_*.cpp` files in the source directory
+2. Compiles each kernel with `v++ -c` to produce `.xo` files
+3. Generates `link.cfg` with kernel connectivity specifications
+4. Links all `.xo` files with `v++ -l` to produce `binary_container_1.xclbin`
+
+**Output files:**
+```
+Fpga-Build/
+├── <build_dir>
+│   ├── xclbin/
+│   │   ├── kernel_conv2d.xo
+│   │   ├── kernel_relu.xo
+│   │   ├── kernel_maxpool.xo
+│   │   └── binary_container_1.xclbin
+│   └── artifacts/
+│       ├── kernel_conv2d_compile.log
+│       └── linking.log
+```
+
+**Duration:** 1 hours depending on kernel complexity
+
+### Stage: Host (`--run-stage=host`)
+
+Cross-compiles the host application for ARM64.
+
+**What it does:**
+1. Identifies all non-kernel `.cpp` files
+2. Compiles with `aarch64-linux-gnu-g++`
+3. Links against XRT, OpenCL, and sysroot libraries
+
+**Compiler flags:**
+```bash
+aarch64-linux-gnu-g++ \
+  -O3 -std=c++20 -Wall -Wextra \
+  --sysroot=${SYSROOT_PATH} \
+  -I${SRC_DIR} \
+  -I${XILINX_XRT}/include \
+  -L${XILINX_XRT}/lib \
+  -L${SYSROOT_PATH}/usr/lib \
+  -o "${HOST_EXE_DIR}/${HOST}_host" \
+  "${HOST_SRCS[@]}" \
+  -lOpenCL -lxrt_coreutil -lpthread \
+  &> "${ARTIFACTS_DIR}/${HOST}_host_compile.log"
+```
+
+**Output:**
+```
+Fpga-Build/
+├── <build_dir>
+│   ├── host/
+│   │   └── resnet50_host    # ARM64 executable
+│   └── artifacts/
+│       └── resnet50_host_compile.log
+```
+
+**Duration:** 1-2 minutes
+
+### Stage: Package (`--run-stage=package`)
+
+Creates a complete SD card image for deployment.
+
+**What it does:**
+1. Generates `package.cfg` with boot file paths
+2. Creates `uEnv.txt` with boot arguments
+3. Runs `v++ --package` to assemble all components
+4. Copies model files and configuration to SD card directory
+
+**Output:**
+```
+Fpga-Build/
+├── <build_dir>
+│   ├── package/
+│   │   └── sd_card/
+│   │       ├── BOOT.BIN              # Bootloader (FSBL, PMUFW, U-Boot)
+│   │       ├── boot.scr              # U-Boot script
+│   │       ├── image.ub              # Linux kernel + devicetree
+│   │       ├── binary_container_1.xclbin  # FPGA binary
+    ├── resnet50_host         # Host executable
+    ├── weights.bin           # Model weights
+    └── labels.txt            # Class labels
+```
+
+### Stage: Emulation (`--run-stage=emulation`)
+
+Sets up hardware emulation for debugging without physical FPGA.
+
+**What it does:**
+1. Generates `emconfig.json` with device topology
+2. Sets up emulation environment variables
+3. Runs the application in simulation mode
+
+**Usage:**
+```bash
+./build.sh --config=config.yaml --target=hw_emu --run-stage=emulation
+```
+
+### Stage: All (`--run-stage=all`)
+
+Runs all stages in sequence: fpga → host → package
+
+```bash
+./build.sh --config=build_configs/resnet50_hw_build_v0/.yaml --run-stage=all
+```
+
+## Build Targets
+
+### Hardware Target (`--target=hw`)
+
+Produces actual FPGA bitstream for deployment on physical hardware.
+
+- Full synthesis and implementation
+- Optimized for performance
+- Long build time
+
+### Emulation Target (`--target=hw_emu`)
+
+Produces simulation binary for functional verification.
+
+- Uses RTL simulation
+- Accurate timing behavior
+- Faster build (10 minutes)
+- Requires `emconfig.json` at runtime
+
+## Incremental Builds
+
+To speed up iteration:
+
+### Host-Only Changes
+
+If you only modified host code (not kernels):
+
+```bash
+./build.sh --config=config.yaml --run-stage=host
+```
+
+### Repackage Only
+
+If binaries exist but you need to update SD card contents:
+
+```bash
+./build.sh --config=config.yaml --run-stage=package
+```
+
+### Skip Completed Stages
+
+The build system caches intermediate outputs. Delete specific artifacts to force rebuild:
+
+```bash
+# Force kernel recompilation
+rm build_dir/xclbin/*.xo
+
+# Force relinking
+rm build_dir/xclbin/*.xclbin
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**"v++ not found"**
+```bash
+source /path/to/Xilinx/2025.1/Vitis/settings64.sh
+```
+
+**"yq: command not found"**
+```bash
+sudo snap install yq
+```
+
+**Synthesis fails with memory error**
+- Ensure 16GB+ RAM available
+- Close other applications during synthesis
+- Consider using a build server
+
+### Log Files
+
+Check logs in `Fpga-Build/<build_dir>/artifacts/`:
+- `*_compile.log` - Kernel compilation logs
+- `linking.log` - XCLBIN linking log
+- `packaging.log` - SD card packaging log
+
+## Build Artifacts Summary
+
+After a complete build:
+
+```
+Fpga-Build/<build_name>/
+├── xclbin/
+│   ├── kernel_*.xo           # Compiled kernels
+│   └── binary_container_1.xclbin  # Linked FPGA binary
+├── host/
+│   └── <app>_host            # Cross-compiled executable
+├── package/
+│   └── sd_card/              # Complete SD card contents
+├── emulation/
+│   └── emconfig.json         # Emulation config (hw_emu only)
+└── artifacts/
+    └── *.log                 # Build logs
+```

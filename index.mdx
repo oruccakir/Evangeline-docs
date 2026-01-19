@@ -1,97 +1,86 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Evangeline"
+description: "Running AI models on Xilinx FPGA"
 ---
 
-## Setting up
+# Evangeline
 
-Get your documentation site up and running in minutes.
+Evangeline is a framework for running AI models on **Xilinx Zynq UltraScale+ MPSoC FPGA**. The project provides complete end-to-end tooling for deploying AI models from development to production on the **ZCU102 Evaluation Kit**.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+## Supported Models
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="ResNet50 CNN" icon="image" href="/resnet50/overview">
+    50-layer deep convolutional neural network for ImageNet image classification with 1000 classes. Optimized FPGA kernels for convolution, pooling, and batch normalization.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Stories15M LLM" icon="message" href="/stories15m/overview">
+    15-million parameter Transformer-based language model for text generation. Implements attention mechanisms, RoPE embeddings, and KV-cache for inference.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key Features
 
-Everything you need to create world-class documentation.
+- **Dual-Path Compilation**: Seamlessly switch between CPU-only development and FPGA acceleration
+- **HLS Kernel Library**: Pre-optimized High-Level Synthesis kernels for common neural network operations
+- **YAML-Based Configuration**: Flexible build system with declarative configuration files
+- **Complete Deployment Pipeline**: From source code to SD card-bootable images
+- **Benchmark Suite**: Built-in accuracy and performance measurement tools
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Project Architecture
 
-## Need inspiration?
+```
+Evangeline/
+├── resnet50/           # ResNet50 CNN implementation
+├── stories15M/         # Transformer LLM implementation
+├── build_configs/      # YAML fpga build configuration files
+├── Hardware-Platforms/ # Vivado FPGA hardware designs (.xsa)
+├── Software-Platforms/ # Vitis platform files (.xpfm)
+├── Linux-Images/       # Petalinux sysroot for cross-compilation
+├── models/             # Pre-trained weights and tokenizers
+├── Fpga-Build/         # Generated build artifacts
+└── build.sh            # Main fpga build orchestration script
+```
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Quick Links
+
+<CardGroup cols={3}>
+  <Card title="Quickstart" icon="rocket" href="/getting-started/quickstart">
+    Get up and running in minutes
+  </Card>
+  <Card title="Build Guide" icon="hammer" href="/getting-started/build-instructions">
+    Complete build instructions
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    System design overview
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+| Component | Technology | Version |
+|-----------|------------|---------|
+| FPGA Synthesis | Xilinx Vivado | 2025.1 |
+| HLS Compiler | Xilinx Vitis | 2025.1 |
+| Linux BSP | Petalinux | 2025.1 |
+| Cross-Compiler | aarch64-linux-gnu-g++ | - |
+| Runtime | Xilinx XRT + OpenCL | - |
+| Target Board | ZCU102 | - |
+
+## Hardware Requirements
+
+### Development Host
+- x86_64 Linux workstation (Ubuntu 20.04+ recommended)
+- 16GB+ RAM for FPGA synthesis
+- 200GB+ disk space for Xilinx tools and build artifacts
+- Xilinx Vitis/Vivado 2025.1 installed
+
+### Target Hardware
+- Xilinx Zynq UltraScale+ MPSoC ZCU102 Evaluation Kit
+- SD card (8GB+ recommended)
+- Ethernet connection for deployment (Optional for file sending)
+- UART cable for serial console
+
+## Useful Resources
+
+- [Xilinx Vitis Tutorials](https://github.com/Xilinx/Vitis-Tutorials)
+- [ZCU102 Evaluation Kit Documentation](https://www.amd.com/en/products/adaptive-socs-and-fpgas/evaluation-boards/ek-u1-zcu102-g.html)

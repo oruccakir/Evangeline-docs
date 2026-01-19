@@ -1,0 +1,125 @@
+---
+title: "Deployment"
+description: "Deploy Evangeline to the ZCU102 FPGA board"
+---
+
+## Overview
+
+This guide covers deploying compiled Evangeline applications to the Xilinx Zynq UltraScale+ MPSoC ZCU102 board.
+
+## SD Card Preparation
+
+BalenaEtcher is the recommended tool for preparing your SD card as it automates the partitioning and formatting process.
+
+### Step 1: Obtain the Image
+
+After a successful build using `./build.sh`, the SD card image or files are located in:
+`Fpga-Build/<build_dir>/package/sd_card.img` image.
+
+### Step 2: Flash with BalenaEtcher
+
+1. Download and install [BalenaEtcher](https://www.balena.io/etcher/).
+2. Select the generated image file (e.g., `Fpga-Build/<build_dir>/package/sd_card.img`).
+3. Select your SD card as the target.
+4. Click **Flash!**.
+
+### Required Boot Files
+
+The following files must be present on the primary partition of the SD card:
+
+| File | Description |
+|------|-------------|
+| `BOOT.BIN` | Contains FSBL, PMUFW, ATF, U-Boot, FPGA bitstream |
+| `boot.scr` | U-Boot boot script |
+| `image.ub` | FIT image with Linux kernel and device tree |
+| `binary_container_1.xclbin` | FPGA kernels architecture binary |
+| `resnet50_host` | Cross-compiled ResNet50 host application |
+| `weights.bin` | Model weights for ResNet50 |
+| `labels.txt` | Class labels for ImageNet |
+| `config_fpga.yaml` | Inference configuration file |
+
+<Note>
+If any files required by your model (as specified in your model's YAML config) are missing from the SD card, you can transfer them to the board via **SSH (SCP)** or copy them using a **USB flash drive** after the board has booted.
+</Note>
+
+
+## Board Configuration
+
+### Boot Mode Switches (SW6)
+
+Set the ZCU102 boot mode switches for SD card boot:
+
+```
+SW6[4:1] = 1000
+Position 1: ON  (towards board edge)
+Position 2: OFF
+Position 3: OFF
+Position 4: OFF
+```
+
+### Physical Connections
+
+1. Insert prepared SD card into J100 slot
+2. Connect Ethernet cable to board
+3. Connect USB UART cable to J83 (for serial console)
+4. Connect power supply to J52
+5. Power on using SW1 switch
+
+## Connecting to the Board
+
+### Method 1: Serial Console (Recommended for First Boot)
+
+```bash
+# Find USB serial device
+ls /dev/ttyUSB*
+
+# Connect with minicom
+sudo minicom -b 115200 -D /dev/ttyUSB0
+
+# Or with screen
+sudo screen /dev/ttyUSB0 115200
+```
+
+Default login credentials:
+- Username: `petalinux`
+- Password: `petalinux` (or blank on first boot)
+
+### Method 2: SSH (After Network Configuration)
+
+```bash
+# Find board IP (from serial console on the FPGA board)
+ip a
+
+# Connect via SSH (from host machine, replace <board-ip> with the IP address of the FPGA board)
+ssh petalinux@<board-ip>
+```
+
+### Method 3: SCP File Transfer
+
+```bash
+# Copy files to board
+scp <file path> petalinux@<board-ip>:/home/petalinux/
+
+# Copy files from board
+scp petalinux@<board-ip>:/home/petalinux/<file path> ./<destination path>
+```
+
+## Running Inference
+
+### ResNet50 Image Classification
+
+The compilation artifacts are typically mounted at `/run/media/mmcblk0p1/`.
+
+```bash
+# Navigate to the application directory
+cd /run/media/mmcblk0p1/resnet50/
+
+# Run inference using the configuration file
+# Single Image Inference set the single_image parameter 
+# to the path of the image you want to classify
+./resnet50_host --config config_fpga.yaml
+```
+
+<Tip>
+The `config_fpga.yaml` file allows you to easily switch between single image inference and benchmark mode. See the [Quickstart](/getting-started/quickstart#run-inference) guide for more details on configuration parameters.
+</Tip>

@@ -1,0 +1,42 @@
+{
+  "name": "Evangeline",
+  "logo": {
+    "light": "",
+    "dark": ""
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#16A34A",
+    "light": "#07C983",
+    "dark": "#15803D"
+  },
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "index",
+        "getting-started/quickstart",
+        "getting-started/build-instructions",
+        "getting-started/deployment"
+      ]
+    },
+    {
+      "group": "Architecture",
+      "pages": [
+        "architecture/overview",
+        "architecture/build-and-config"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api/kernel-interfaces"
+      ]
+    }
+  ],
+  "footer": {
+    "socials": {
+      "github": "https://github.com/oruccakir/Evangeline"
+    }
+  }
+}

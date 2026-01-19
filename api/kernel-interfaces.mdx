@@ -1,0 +1,348 @@
+---
+title: "Kernel Interfaces"
+description: "API reference for HLS FPGA kernels"
+---
+
+## HLS Kernel Convention
+
+All FPGA kernels follow a consistent interface pattern:
+
+```cpp
+extern "C" {
+void kernel_<operation>(
+    // Input buffers (const)
+    const float* input,
+    const float* weights,
+    // Output buffer
+    float* output,
+    // Scalar parameters
+    int param1,
+    int param2,
+    ...
+);
+}
+```
+
+## Interface Pragmas
+
+### Memory Interfaces
+
+```cpp
+#pragma HLS INTERFACE m_axi port=<buffer> bundle=gmem<N> offset=slave
+```
+
+| Attribute | Description |
+|-----------|-------------|
+| `m_axi` | AXI Master interface for DDR access |
+| `bundle=gmem<N>` | Memory port assignment (gmem0, gmem1, ...) |
+| `offset=slave` | Host controls address offset |
+
+### Control Interface
+
+```cpp
+#pragma HLS INTERFACE s_axilite port=return bundle=control
+#pragma HLS INTERFACE s_axilite port=<param> bundle=control
+```
+
+AXI-Lite slave interface for control registers and scalar parameters.
+
+---
+
+## ResNet50 Kernels
+
+### kernel_conv2d
+
+```cpp
+extern "C" {
+void kernel_conv2d(
+    float* input,          // [in_c × in_h × in_w]
+    float* weights,        // [out_c × in_c × kh × kw]
+    float* output,         // [out_c × out_h × out_w]
+    int in_c,              // Input channels
+    int in_h,              // Input height
+    int in_w,              // Input width
+    int out_c,             // Output channels
+    int kh,                // Kernel height
+    int kw,                // Kernel width
+    int stride,            // Convolution stride
+    int padding            // Zero padding
+);
+}
+```
+
+**Memory Mapping:**
+```ini
+sp=kernel_conv2d.input:DDR[0]
+sp=kernel_conv2d.weights:DDR[1]
+sp=kernel_conv2d.output:DDR[0]
+```
+
+### kernel_batchnorm
+
+```cpp
+extern "C" {
+void kernel_batchnorm(
+    float* input,          // [c × h × w]
+    float* gamma,          // [c]
+    float* beta,           // [c]
+    float* mean,           // [c]
+    float* var,            // [c]
+    float* output,         // [c × h × w]
+    int c,                 // Channels
+    int h,                 // Height
+    int w,                 // Width
+    int apply_relu         // Boolean (0 or 1)
+);
+}
+```
+
+### kernel_relu
+
+```cpp
+extern "C" {
+void kernel_relu(
+    float* input,
+    float* output,
+    int size
+);
+}
+```
+
+### kernel_maxpool
+
+```cpp
+extern "C" {
+void kernel_maxpool(
+    float* input,          // [c × in_h × in_w]
+    float* output,         // [c × out_h × out_w]
+    int c,                 // Channels
+    int in_h,              // Input height
+    int in_w,              // Input width
+    int kernel_size,       // Pooling window size
+    int stride,            // Pooling stride
+    int padding            // Padding
+);
+}
+```
+
+### kernel_avgpool
+
+```cpp
+extern "C" {
+void kernel_avgpool(
+    float* input,          // [c × h × w]
+    float* output,         // [c]
+    int c,                 // Channels
+    int h,                 // Height
+    int w                  // Width
+);
+}
+```
+
+### kernel_fc
+
+```cpp
+extern "C" {
+void kernel_fc(
+    float* input,          // [in_features]
+    float* weights,        // [out_features × in_features]
+    float* bias,           // [out_features]
+    float* output,         // [out_features]
+    int in_features,
+    int out_features
+);
+}
+```
+
+### kernel_add
+
+```cpp
+extern "C" {
+void kernel_add(
+    float* input1,
+    float* input2,
+    float* output,
+    int size
+);
+}
+```
+
+---
+
+## Stories15M Kernels
+
+### kernel_matmul
+
+```cpp
+extern "C" {
+void kernel_matmul(
+    float* i_vec,          // [vec_size]
+    float* i_mat,          // [col_size × vec_size]
+    float* o_vec,          // [col_size]
+    int vec_size,
+    int col_size
+);
+}
+```
+
+**Optimized for M=1 (single token inference).**
+
+### kernel_rmsnorm
+
+```cpp
+extern "C" {
+void kernel_rmsnorm(
+    float* i_vec_1,        // Input vector [vec_size]
+    float* i_vec_2,        // Weights [vec_size]
+    float* o_vec,          // Output [vec_size]
+    int vec_size
+);
+}
+```
+
+### kernel_softmax
+
+```cpp
+extern "C" {
+void kernel_softmax(
+    float* i_vec,          // Input [vec_size]
+    float* o_vec,          // Output [vec_size]
+    int vec_size
+);
+}
+```
+
+### kernel_rope
+
+```cpp
+extern "C" {
+void kernel_rope(
+    float* q_in,           // [head_dim_total] (e.g. 288)
+    float* k_in,           // [head_dim_total] (e.g. 288)
+    float* cos_vec,        // [head_dim] (e.g. 24)
+    float* sin_vec,        // [head_dim] (e.g. 24)
+    float* q_out,          // [head_dim_total]
+    float* k_out,          // [head_dim_total]
+    int head_begin         // Position in sequence
+);
+}
+```
+
+### kernel_add / kernel_mul
+
+```cpp
+extern "C" {
+void kernel_add(
+    float* i_vec_1, 
+    float* i_vec_2, 
+    float* o_vec, 
+    int vec_size
+);
+
+void kernel_mul(
+    float* i_vec_1, 
+    float* i_vec_2, 
+    float* o_vec, 
+    int vec_size
+);
+}
+```
+
+
+---
+
+## Link Configuration
+
+### Format
+
+```ini
+# link.cfg
+[connectivity]
+# Kernel instances: nk=<kernel>:<count>:<instance_name>
+nk=kernel_conv2d:1:conv2d_0
+
+# Memory mapping: sp=<instance>.<port>:<memory>
+sp=conv2d_0.input:DDR[0]
+sp=conv2d_0.weight:DDR[1]
+sp=conv2d_0.output:DDR[0]
+```
+
+### Memory Banks
+
+| Memory | Description |
+|--------|-------------|
+| `DDR[0]` | PS DDR4 bank 0 |
+| `DDR[1]` | PS DDR4 bank 1 |
+| `DDR[2]` | PS DDR4 bank 2 |
+| `DDR[3]` | PS DDR4 bank 3 |
+
+---
+
+## Host Invocation
+
+### OpenCL API
+
+```cpp
+// Create kernel
+cl::Kernel kernel(program, "kernel_conv2d");
+
+// Allocate buffers
+cl::Buffer d_input(context, CL_MEM_READ_ONLY, input_size);
+cl::Buffer d_weight(context, CL_MEM_READ_ONLY, weight_size);
+cl::Buffer d_output(context, CL_MEM_WRITE_ONLY, output_size);
+
+// Transfer input
+queue.enqueueWriteBuffer(d_input, CL_TRUE, 0, input_size, h_input);
+queue.enqueueWriteBuffer(d_weight, CL_TRUE, 0, weight_size, h_weight);
+
+// Set arguments
+int arg = 0;
+kernel.setArg(arg++, d_input);
+kernel.setArg(arg++, d_weight);
+kernel.setArg(arg++, d_output);
+kernel.setArg(arg++, in_c);
+kernel.setArg(arg++, in_h);
+kernel.setArg(arg++, in_w);
+kernel.setArg(arg++, out_c);
+kernel.setArg(arg++, k);
+kernel.setArg(arg++, stride);
+kernel.setArg(arg++, padding);
+
+// Execute
+queue.enqueueTask(kernel);
+queue.finish();
+
+// Read output
+queue.enqueueReadBuffer(d_output, CL_TRUE, 0, output_size, h_output);
+```
+
+### XRT Native API
+
+```cpp
+// Load xclbin
+auto device = xrt::device(0);
+auto uuid = device.load_xclbin("binary_container_1.xclbin");
+
+// Get kernel
+auto kernel = xrt::kernel(device, uuid, "kernel_conv2d");
+
+// Allocate buffers
+auto bo_input = xrt::bo(device, input_size, kernel.group_id(0));
+auto bo_weight = xrt::bo(device, weight_size, kernel.group_id(1));
+auto bo_output = xrt::bo(device, output_size, kernel.group_id(2));
+
+// Map and fill input
+bo_input.write(h_input);
+bo_weight.write(h_weight);
+bo_input.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+bo_weight.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+// Run kernel
+auto run = kernel(bo_input, bo_weight, bo_output,
+                  in_c, in_h, in_w, out_c, k, stride, padding);
+run.wait();
+
+// Read output
+bo_output.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+bo_output.read(h_output);
+```

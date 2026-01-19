@@ -1,0 +1,26 @@
+---
+title: "ResNet50 Model"
+description: "Image classification with ResNet50 on FPGA"
+---
+
+## Overview
+
+ResNet50 is used as a benchmark for image classification tasks on the ZCU102 board.
+
+## Running Inference
+
+Use the following command to run ResNet50 inference:
+
+```bash
+./resnet50_host \
+  --weight_path resnet-models/resnet50_weights.bin \
+  --image_path images/frog.bin \
+  --labels_path resnet-models/imagenet_classes.txt \
+  --xclbin binary_container_1.xclbin
+```
+
+### Parameters
+- `--weight_path`: Path to the pre-quantized weights.
+- `--image_path`: Path to the binary image file.
+- `--labels_path`: Path to the ImageNet class labels.
+- `--xclbin`: The FPGA binary container.

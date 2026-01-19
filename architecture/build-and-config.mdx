@@ -1,0 +1,84 @@
+---
+title: "Build & Configuration"
+description: "Comprehensive guide to the Evangeline build system and configuration files"
+---
+
+## Build System Overview
+
+Evangeline uses a multi-stage build system orchestrated by `build.sh`. This script automates the transition from high-level C++ code to a deployable FPGA image.
+
+### Build Stages
+
+| Stage | Command | Description |
+|-------|---------|-------------|
+| **FPGA** | `--run-stage=fpga` | Compiles HLS kernels (`.cpp`) to objects (`.xo`) and links them into an FPGA binary (`.xclbin`). |
+| **Host** | `--run-stage=host` | Cross-compiles the C++ host application for the ARM processor on the ZCU102. |
+| **Package**| `--run-stage=package`| Bundles the FPGA binary, host executable, and boot files into an SD card image. |
+| **All** | `--run-stage=all` | Executes all of the above stages sequentially (Default). |
+
+---
+
+## Build Configuration
+
+Builds are managed via YAML files in the `build_configs/` directory. This ensures reproducibility and keeps command-line arguments clean.
+
+### Example: ResNet50 Build (`build_configs/resnet50_hw_build_v0/.yaml`)
+
+```yaml
+# Platform Paths
+sw_platform_path: Software-Platforms/zcu102_custom_platform_vo/.../.xpfm
+sys_root_path: Linux-Images/xilinx-zynqmp-common-v2025.1/sysroots/...
+
+# Build Settings
+host: resnet50              # Executable name
+target: hw                  # hw (Hardware) or hw_emu (Emulation)
+src_dir: resnet50/src       # Application source code
+run_stage: all              # Build stage to execute
+
+# SD Card Assets
+sd_files:
+  - models/resnet50/labels.txt
+  - models/resnet50/weights.bin
+```
+
+---
+
+## Runtime Configuration
+
+Once deployed, the applications use a separate YAML file for inference parameters. This allows you to change dataset paths or model settings without rebuilding.
+
+### Example: Inference Config (`resnet50/config_fpga.yaml`)
+
+```yaml
+weight_path: /run/media/mmcblk0p1/resnet50/weights.bin
+xclbin_path: /run/media/mmcblk0p1/resnet50/binary_container_1.xclbin
+labels_path: /run/media/mmcblk0p1/resnet50/imagenet_classes.txt
+
+# Single Inference
+single_image: /run/media/mmcblk0p1/resnet50/images/apple.jpg
+
+# Benchmarking
+dataset_path: /run/media/mmcblk0p1/resnet50/datasets/val
+samples_per_class: 1
+```
+
+<Tip>
+The host application automatically detects whether to run a **Single Inference** or a **Benchmark** based on the presence of the `single_image` parameter in your config file.
+</Tip>
+
+---
+
+## Command Line Usage
+
+While YAML is recommended, you can still override settings or run specific stages from the CLI:
+
+```bash
+# Build using a config file
+./build.sh --config=build_configs/resnet50_hw_build_v0/.yaml
+
+# Run only the host compilation stage
+./build.sh --config=config.yaml --run-stage=host
+
+# Override the build target for emulation
+./build.sh --config=config.yaml --target=hw_emu
+```

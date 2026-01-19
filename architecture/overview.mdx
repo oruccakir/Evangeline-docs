@@ -1,0 +1,83 @@
+---
+title: "Architecture Overview"
+description: "Understanding the Evangeline system architecture and design decisions"
+---
+
+## System Architecture
+
+Evangeline implements a heterogeneous computing architecture that leverages both the ARM Processing System (PS) and Programmable Logic (PL) of the Zynq UltraScale+ MPSoC.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        ZCU102 Board                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────┐     ┌─────────────────────────────────┐   │
+│  │  Processing System  │     │     Programmable Logic (PL)     │   │
+│  │       (PS)          │     │                                 │   │
+│  │  ┌───────────────┐  │     │  ┌─────────────────────────┐   │   │
+│  │  │ ARM Cortex-A53│  │     │  │    HLS Kernels          │   │   │
+│  │  │  Host App     │  │◄───►│  │  ┌─────┐ ┌─────────┐   │   │   │
+│  │  │  + OpenCL     │  │ AXI │  │  │Conv │ │BatchNorm│   │   │   │
+│  │  └───────────────┘  │     │  │  └─────┘ └─────────┘   │   │   │
+│  │                     │     │  │  ┌─────┐ ┌─────────┐   │   │   │
+│  │  ┌───────────────┐  │     │  │  │ReLU │ │ MaxPool │   │   │   │
+│  │  │   DDR4 PS     │  │     │  │  └─────┘ └─────────┘   │   │   │
+│  │  │   4GB         │  │     │  └─────────────────────────┘   │   │
+│  │  └───────────────┘  │     │                                 │   │
+│  └─────────────────────┘     │  ┌─────────────────────────┐   │   │
+│                              │  │   DDR4 PL - 512MB       │   │   │
+│                              │  └─────────────────────────┘   │   │
+│                              └─────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Key Design Principles
+
+### 1. Dual-Path Compilation
+
+The codebase supports seamless switching between CPU-only and FPGA execution:
+
+```cpp
+// In forward.cpp
+void run_inference(const Tensor& input) {
+#ifndef USE_CPU_ONLY
+    // FPGA execution path
+    fpga_forward(input);
+#else
+    // CPU-only execution path
+    cpu_forward(input);
+#endif
+}
+```
+
+### 2. Separation of Concerns
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Application Layer                            │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
+│  │     main.cpp    │  │   benchmark.cpp  │  │   config.cpp  │  │
+│  └────────┬────────┘  └────────┬─────────┘  └───────┬───────┘  │
+├───────────┼────────────────────┼─────────────────────┼──────────┤
+│           │        Abstraction Layer                │           │
+│  ┌────────▼────────────────────▼─────────────────────▼───────┐  │
+│  │                    forward.cpp                            │  │
+│  │              (orchestrates layer execution)               │  │
+│  └────────────────────────┬──────────────────────────────────┘  │
+├───────────────────────────┼─────────────────────────────────────┤
+│                           │  Execution Layer                    │
+│  ┌────────────────────────┼────────────────────────────────┐   │
+│  │      CPU Path          │         FPGA Path              │   │
+│  │  ┌──────────────┐      │    ┌──────────────────┐        │   │
+│  │  │cpu_kernels.cpp│     │    │ kernels_fpga.cpp │        │   │
+│  │  │ core_cpu.cpp │      │    │  (OpenCL/XRT)    │        │   │
+│  │  └──────────────┘      │    └────────┬─────────┘        │   │
+│  └────────────────────────┼─────────────┼──────────────────┘   │
+├───────────────────────────┼─────────────┼───────────────────────┤
+│                           │             │  HLS Layer            │
+│                           │    ┌────────▼─────────┐             │
+│                           │    │  kernel_*.cpp    │             │
+│                           │    │  (HLS C++ code)  │             │
+│                           │    └──────────────────┘             │
+└───────────────────────────┴─────────────────────────────────────┘
+```

@@ -1,0 +1,230 @@
+---
+title: "Quickstart"
+description: "Get Evangeline up and running on your development machine and FPGA board"
+---
+
+## Prerequisites
+
+Before starting, ensure you have the following installed on your development machine:
+
+### Required Software
+
+| Software | Version | Purpose |
+|----------|---------|---------|
+| Xilinx Vivado | 2025.1 | FPGA synthesis and implementation (Installed automatically with Vitis) |
+| Xilinx Vitis | 2025.1 | HLS compilation and linking |
+| yq | Latest | YAML parsing for build configuration |
+| Git | 2.0+ | Version control |
+
+### Hardware Requirements
+
+- **Development Host**: x86_64 Linux with 16GB+ RAM, 200GB+ disk space
+- **Target Board**: Xilinx Zynq UltraScale+ MPSoC ZCU102 Evaluation Kit
+- **SD Card**: 8GB+ for boot images and model files
+
+## Installation
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/oruccakir/Evangeline.git
+cd Evangeline
+```
+
+### Step 2: Install Xilinx Tools
+
+Follow the official Xilinx installation guides:
+
+1. Download Vitis 2025.1 from [AMD/Xilinx Downloads](https://www.xilinx.com/support/download.html)
+2. Run the installer and select:
+   - Vitis (includes Vivado)
+   - Zynq UltraScale+ MPSoC device support
+
+### Step 3: Install yq (YAML Parser)
+
+```bash
+# Using snap (Ubuntu)
+sudo snap install yq
+
+# Or using wget
+sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+sudo chmod +x /usr/local/bin/yq
+```
+
+## Quick Test: CPU-Only Build
+
+Test your setup with a CPU-only build that doesn't require FPGA tools:
+
+### ResNet50 CPU Build
+
+```bash
+cd resnet50
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### Run Inference
+
+```bash
+./main \
+  --weight_path ../../models/resnet50/weights.bin \
+  --single_image ../images/dog.jpg \
+  --labels_path ../../models/resnet50/labels.txt
+```
+
+Expected output:
+```
+=== ResNet50 Single Inference ===
+
+Mode:        CPU
+Weight file: ../../models/resnet50/weights.bin
+Image file:  ../images/dog.jpg
+Labels file: ../../models/resnet50/labels.txt
+
+Loading weights... done.
+Loading image... done. Shape: [3, 224, 224]
+Loaded 1000 labels.
+
+Running inference... done.
+Inference time: 5368.45 ms
+
+Top-5 Predictions:
+--------------------------------------------------
+  1. Samoyed                          87.92%
+  2. Pomeranian                        2.38%
+  3. wallaby                           1.60%
+  4. Alaskan tundra wolf               1.21%
+  5. Keeshond                          1.10%
+```
+
+### Stories15M CPU Build
+
+```bash
+cd stories15M
+mkdir build && cd build
+cmake .. -DUSE_CPU_ONLY=ON
+make -j$(nproc)
+```
+
+### Run Text Generation
+
+```bash
+./stories15M \
+  --weight_path ../../models/stories15M/weights.bin \
+  --vocab_path ../../models/stories15M/tokenizer.bin \
+  --max_seq 100
+```
+
+## FPGA Build
+
+Once the CPU build works, proceed with the full FPGA build:
+
+```bash
+# From project root directory (this example uses ResNet50)
+./build.sh --config=build_configs/resnet50_hw_build_v0/.yaml
+```
+
+This will:
+1. Compile HLS kernels to Xilinx Object files (.xo)
+2. Link kernels into FPGA binary (.xclbin)
+3. Cross-compile host application for ARM64
+4. Package everything for SD card deployment
+
+<Info>
+Full FPGA synthesis can take 1 or more hours depending on your hardware. Use `--run-stage=host` for faster iteration when only modifying host code.
+</Info>
+
+## Deployment to ZCU102
+
+### Step 1: Prepare SD Card
+
+After a successful build, use **BalenaEtcher** to flash the generated image to your SD card. BalenaEtcher will automatically handle the partitioning and formatting.
+
+1. Download and install [BalenaEtcher](https://www.balena.io/etcher/).
+2. Select the generated image file (e.g., Evangeline/Fpga-Build/build_resnet50_hw/package/sd_card or similar from the build output).
+3. Select your SD card as the target.
+4. Click **Flash!**.
+
+
+### Step 2: Boot the Board
+
+1. Insert SD card into ZCU102
+2. Set boot mode switches to SD boot (SW6: 1000)
+3. Power on the board
+4. Wait for Linux to boot (~60 seconds)
+
+<Note>After booting, the board will be accessible via SSH or Serial Console.</Note>
+
+### Step 3: Connect to the Board
+
+```bash
+# Via SSH (if network configured)
+# First learn the board IP address from the board using ip a command
+ssh petalinux@<board-ip>
+
+# or Via Serial Console
+sudo minicom -b 115200 -D /dev/ttyUSB0
+```
+
+### Step 4: Run Inference
+
+It is recommended to use a YAML configuration file to manage multiple parameters easily.
+
+```bash
+cd /run/media/mmcblk0p1/resnet50/
+./resnet50_host --config config_fpga.yaml
+```
+
+Example `config_fpga.yaml` content:
+```yaml
+weight_path: /run/media/mmcblk0p1/resnet50/weights.bin
+dataset_path: /run/media/mmcblk0p1/resnet50/datasets/imagenette2-320/val
+xclbin_path: /run/media/mmcblk0p1/resnet50/binary_container_1.xclbin
+samples_per_class: 1
+verbose: 1
+output_csv: /run/media/mmcblk0p1/resnet50/benchmark_results/v0.csv
+single_image: /run/media/mmcblk0p1/resnet50/images/apple.jpg
+labels_path: /run/media/mmcblk0p1/resnet50/imagenet_classes.txt
+```
+
+
+### Configuration Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `weight_path` | Path | Path to the `.bin` file containing the model weights. |
+| `dataset_path` | Path | Directory containing the validation images (used in **Benchmark Mode**). |
+| `xclbin_path` | Path | Path to the `.xclbin` bitstream file for FPGA hardware. |
+| `samples_per_class` | Integer | (Optional) Limit the number of images processed per class during benchmarking. |
+| `verbose` | Boolean | (Optional) Set to `1` to enable detailed console output for each inference. |
+| `output_csv` | Path | Where to save performance metrics (accuracy, latency) in CSV format. |
+| `single_image` | Path | Path to a specific image for **Single Inference Mode**. |
+| `labels_path` | Path | Path to the text file containing class label names. |
+
+<Tip>
+**Mode Switching:**
+- If the `single_image` parameter is set in your config file (or passed via CLI), the tool runs in **Single Inference Mode**.
+- If `single_image` is absent, it runs in **Benchmark Mode** using the `dataset_path`.
+</Tip>
+
+Specifically for the ZCU102, ensure your `config_fpga.yaml` contains correct paths pointing to `/run/media/mmcblk0p1/`.
+
+
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Build Instructions" icon="hammer" href="/getting-started/build-instructions">
+    Detailed build options and stages
+  </Card>
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    Understand the system design
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/kernel-interfaces">
+    Deep dive into kernel interfaces
+  </Card>
+  <Card title="Deployment" icon="cloud" href="/getting-started/deployment">
+    Deploy to ZCU102
+  </Card>
+</CardGroup>
