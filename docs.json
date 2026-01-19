@@ -1,5 +1,6 @@
 {
   "name": "Rejuvenate",
+  "theme": "mint",
   "favicon": "/favicon.svg",
   "colors": {
     "primary": "#16A34A",
