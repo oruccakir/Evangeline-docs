@@ -1,0 +1,132 @@
+---
+title: "ResNet50 Overview"
+description: "Deep dive into the ResNet50 CNN implementation for FPGA"
+---
+
+## Introduction
+
+ResNet50 is a 50-layer deep convolutional neural network designed for image classification on the ImageNet dataset (1000 classes). This implementation provides both CPU and FPGA execution paths.
+
+## Architecture
+
+The network follows a **Bottleneck** architecture with residual connections:
+
+```
+Input (224×224×3)
+    │
+    ▼
+┌─────────────────┐
+│      Stem       │  7×7 Conv (stride=2) → BatchNorm → ReLU → MaxPool
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │ Layer 1 │  3 Bottleneck Blocks (64 → 256 channels)
+    └────┬────┘
+    ┌────▼────┐
+    │ Layer 2 │  4 Bottleneck Blocks (256 → 512 channels, stride=2)
+    └────┬────┘
+    ┌────▼────┐
+    │ Layer 3 │  6 Bottleneck Blocks (512 → 1024 channels, stride=2)
+    └────┬────┘
+    ┌────▼────┐
+    │ Layer 4 │  3 Bottleneck Blocks (1024 → 2048 channels, stride=2)
+    └────┬────┘
+         │
+┌────────▼────────┐
+│ Classification  │  Global AvgPool → FC (2048 → 1000)
+└─────────────────┘
+```
+
+### Bottleneck Block
+
+Each block contains:
+- **1×1 Conv** → Reduce channels
+- **3×3 Conv** → Spatial processing
+- **1×1 Conv** → Expand channels
+- **Residual Add** → Skip connection
+
+---
+
+## Directory Structure
+
+```
+resnet50/
+├── CMakeLists.txt        # Build configuration
+├── config.yaml           # Runtime configuration
+├── config_fpga.yaml      # FPGA-specific config
+├── imagenet_classes.txt  # Class labels (1000)
+├── images/               # Sample test images
+├── datasets/             # ImageNette dataset
+└── src/
+    ├── main.cpp              # Entry point
+    ├── forward.cpp           # CPU forward pass
+    ├── forward_fpga.cpp      # FPGA forward pass
+    ├── weight.hpp            # Weight structures
+    ├── tensor.hpp            # Tensor abstraction
+    ├── benchmark.cpp         # ImageNette benchmarking
+    ├── single_inference.cpp  # Single image inference
+    ├── cpu_kernels.cpp       # CPU kernel implementations
+    ├── kernels_fpga.cpp      # FPGA kernel wrappers (OpenCL)
+    └── kernel_*.cpp          # HLS kernel sources
+```
+
+---
+
+## FPGA Kernels
+
+| Kernel | Function | Description |
+|--------|----------|-------------|
+| `kernel_conv2d` | Convolution | 2D convolution with padding and stride |
+| `kernel_batchnorm` | Batch Normalization | Normalize + optional fused ReLU |
+| `kernel_relu` | ReLU Activation | Element-wise max(0, x) |
+| `kernel_maxpool` | Max Pooling | 2D max pooling with stride |
+| `kernel_avgpool` | Global Avg Pool | Spatial averaging to 1×1 |
+| `kernel_fc` | Fully Connected | Matrix-vector multiplication |
+| `kernel_add` | Residual Add | Element-wise addition |
+
+---
+
+## Running Inference
+
+### Single Image
+
+```bash
+./resnet50_host --config config_fpga.yaml
+```
+
+### Benchmark Mode
+
+```bash
+./resnet50_host --config config_fpga.yaml
+```
+
+The config file determines the mode based on whether `single_image` or `dataset_path` is provided.
+
+### Configuration Example
+
+```yaml
+weight_path: /path/to/weights.bin
+xclbin_path: /path/to/binary_container_1.xclbin
+labels_path: /path/to/imagenet_classes.txt
+
+# For single inference
+single_image: /path/to/image.jpg
+
+# For benchmarking
+dataset_path: /path/to/imagenette2-320/val
+samples_per_class: 10
+output_csv: results.csv
+```
+
+---
+
+## Benchmark Results
+
+The implementation supports Top-1 through Top-5 accuracy metrics and throughput measurement using the ImageNette dataset (10-class subset of ImageNet).
+
+| Metric | Description |
+|--------|-------------|
+| Top-1 Accuracy | Correct if highest prediction matches label |
+| Top-5 Accuracy | Correct if label is in top 5 predictions |
+| Throughput | Images processed per second |
+| Avg Inference Time | Milliseconds per image |

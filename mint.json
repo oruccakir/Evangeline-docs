@@ -32,6 +32,18 @@
       "pages": [
         "api/kernel-interfaces"
       ]
+    },
+    {
+      "group": "ResNet50 CNN",
+      "pages": [
+        "resnet50/overview"
+      ]
+    },
+    {
+      "group": "Stories15M LLM",
+      "pages": [
+        "stories15m/overview"
+      ]
     }
   ],
   "footer": {

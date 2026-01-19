@@ -1,0 +1,174 @@
+---
+title: "Stories15M Overview"
+description: "Deep dive into the Stories15M Transformer LLM implementation for FPGA"
+---
+
+## Introduction
+
+Stories15M is a 15-million parameter Transformer-based language model optimized for text generation. It implements the decoder-only architecture similar to GPT, with FPGA acceleration for key computational kernels.
+
+## Architecture
+
+The model uses a **Decoder-Only Transformer** architecture:
+
+```
+Token Input
+    │
+    ▼
+┌─────────────────┐
+│   Embedding     │  Token → 288-dim vector
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │ Layer 0 │──┐
+    └────┬────┘  │
+         ⋮      │ × 6 Layers
+    ┌────▼────┐  │
+    │ Layer 5 │──┘
+    └────┬────┘
+         │
+┌────────▼────────┐
+│  Final RMSNorm  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Output Logits  │  → Vocabulary (32000 tokens)
+└─────────────────┘
+```
+
+### Transformer Block
+
+Each layer contains:
+
+```
+Input
+  │
+  ├───────────────────┐
+  ▼                   │
+RMSNorm               │
+  │                   │
+  ▼                   │
+Multi-Head Attention  │  (6 heads, 48-dim each)
+  │ ├─ RoPE           │
+  │ └─ KV-Cache       │
+  │                   │
+  ▼                   │
+Add ←─────────────────┘
+  │
+  ├───────────────────┐
+  ▼                   │
+RMSNorm               │
+  │                   │
+  ▼                   │
+FFN (SwiGLU)          │  W1, W2, W3 projections
+  │                   │
+  ▼                   │
+Add ←─────────────────┘
+  │
+  ▼
+Output
+```
+
+---
+
+## Model Parameters
+
+| Parameter | Value |
+|-----------|-------|
+| Embedding Dimension | 288 |
+| Number of Layers | 6 |
+| Number of Heads | 6 |
+| Head Dimension | 48 |
+| FFN Hidden Dim | 768 |
+| Vocabulary Size | 32,000 |
+| Max Sequence Length | 256 |
+| Total Parameters | ~15M |
+
+---
+
+## Directory Structure
+
+```
+stories15M/
+├── CMakeLists.txt        # Build configuration
+└── src/
+    ├── main.cpp              # Entry point
+    ├── decode.cpp            # Token-by-token decoding
+    ├── context.hpp           # Inference state (activations)
+    ├── weight.hpp            # Model weights structure
+    ├── tensor.hpp            # CPU tensors
+    ├── tensor_fpga.hpp       # FPGA tensor abstractions
+    ├── device.cpp            # CPU/FPGA device abstraction
+    ├── vocab.cpp             # Tokenizer
+    ├── benchmark.cpp         # Performance benchmarking
+    └── kernel_*.cpp          # HLS kernel sources
+```
+
+---
+
+## FPGA Kernels
+
+| Kernel | Function | Description |
+|--------|----------|-------------|
+| `kernel_matmul` | Matrix-Vector Multiply | Core attention & FFN computation |
+| `kernel_rmsnorm` | RMS Normalization | Pre-attention and pre-FFN normalization |
+| `kernel_rope` | Rotary Position Embedding | Position-aware Q/K transformation |
+| `kernel_softmax` | Softmax | Attention score normalization |
+| `kernel_add` | Residual Add | Skip connections |
+| `kernel_mul` | Element-wise Multiply | SwiGLU activation |
+
+---
+
+## Key Features
+
+### RoPE (Rotary Position Embeddings)
+
+Instead of absolute position encodings, RoPE rotates query and key vectors based on their position, enabling better length generalization:
+
+```cpp
+q_out[i] = q[i] * cos[pos] - q[i+1] * sin[pos]
+q_out[i+1] = q[i] * sin[pos] + q[i+1] * cos[pos]
+```
+
+### KV-Cache
+
+For efficient autoregressive generation, key and value projections are cached:
+
+```cpp
+k_cache[layer][pos] = k_rotated
+v_cache[layer][pos] = v_projected
+```
+
+This avoids recomputing K/V for all previous tokens at each step.
+
+### SwiGLU Activation
+
+The FFN uses SwiGLU instead of standard ReLU:
+
+```cpp
+ffn_out = (SiLU(W1 · x) ⊙ W3 · x) · W2
+```
+
+---
+
+## Running Inference
+
+```bash
+./stories15m_host \
+    --weight_path /path/to/weights.bin \
+    --vocab_path /path/to/tokenizer.bin \
+    --xclbin /path/to/binary_container_1.xclbin \
+    --max_seq 256 \
+    --temp 0.8
+```
+
+### CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--weight_path` | Path to model weights | Required |
+| `--vocab_path` | Path to tokenizer | Required |
+| `--xclbin` | FPGA binary path | CPU mode if omitted |
+| `--max_seq` | Maximum sequence length | 256 |
+| `--temp` | Sampling temperature | 0.8 |
+| `--color` | Enable colored output | Off |
