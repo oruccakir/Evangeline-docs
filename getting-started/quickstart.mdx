@@ -102,15 +102,15 @@ Top-5 Predictions:
 
 ```bash
 cd stories15M
-mkdir build && cd build
-cmake .. -DUSE_CPU_ONLY=ON
+mkdir -p build && cd build
+cmake ..
 make -j$(nproc)
 ```
 
 ### Run Text Generation
 
 ```bash
-./stories15M \
+./main \
   --weight_path ../../models/stories15M/weights.bin \
   --vocab_path ../../models/stories15M/tokenizer.bin \
   --max_seq 100
