@@ -160,7 +160,7 @@ Before running inference, you need to build the application. See the [Build & Co
 ```bash
 cd stories15M
 mkdir build && cd build
-cmake .. -DUSE_CPU_ONLY=ON
+cmake ..
 make -j$(nproc)
 ```
 
@@ -183,7 +183,7 @@ The FPGA build takes 4-8 hours. Use CPU builds for development and testing.
 For quick testing without FPGA hardware:
 
 ```bash
-./stories15m_host \
+./main \
     --weight_path ../weights.bin \
     --vocab_path ../tokenizer.bin \
     --max_seq 256 \
@@ -198,7 +198,7 @@ For hardware-accelerated inference on ZCU102:
 
 ```bash
 # On the board (after deployment)
-./stories15m_host \
+./stories15M_host \
     --weight_path /run/media/mmcblk0p1/stories15m/weights.bin \
     --vocab_path /run/media/mmcblk0p1/stories15m/tokenizer.bin \
     --xclbin /run/media/mmcblk0p1/stories15m/binary_container_1.xclbin \

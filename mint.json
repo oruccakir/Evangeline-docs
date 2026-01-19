@@ -1,9 +1,5 @@
 {
-  "name": "Evangeline",
-  "logo": {
-    "light": "",
-    "dark": ""
-  },
+  "name": "Rejuvenate",
   "favicon": "/favicon.svg",
   "colors": {
     "primary": "#16A34A",

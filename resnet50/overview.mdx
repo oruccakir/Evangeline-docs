@@ -95,7 +95,7 @@ Before running inference, you need to build the application. See the [Build & Co
 ```bash
 cd resnet50
 mkdir build && cd build
-cmake .. -DUSE_CPU_ONLY=ON
+cmake ..
 make -j$(nproc)
 ```
 
@@ -119,10 +119,10 @@ For quick testing without FPGA hardware:
 
 ```bash
 # Single image
-./resnet50_benchmark --config ../config.yaml
+./main --config ../config.yaml
 
 # Or with CLI arguments
-./resnet50_benchmark \
+./main \
     --weight_path ../weights.bin \
     --single_image ../images/dog.jpg \
     --labels_path ../imagenet_classes.txt
