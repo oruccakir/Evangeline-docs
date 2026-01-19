@@ -86,37 +86,90 @@ resnet50/
 
 ---
 
+## Building
+
+Before running inference, you need to build the application. See the [Build & Configuration](/architecture/build-and-config) guide for full details.
+
+### CPU-Only Build (Quick Test)
+
+```bash
+cd resnet50
+mkdir build && cd build
+cmake .. -DUSE_CPU_ONLY=ON
+make -j$(nproc)
+```
+
+### FPGA Build
+
+```bash
+./build.sh --config=build_configs/resnet50_hw_build_v0/.yaml
+```
+
+<Tip>
+The FPGA build takes 4-8 hours. Use CPU builds for development and testing.
+</Tip>
+
+---
+
 ## Running Inference
 
-### Single Image
+### CPU Mode
+
+For quick testing without FPGA hardware:
 
 ```bash
-./resnet50_host --config config_fpga.yaml
+# Single image
+./resnet50_benchmark --config ../config.yaml
+
+# Or with CLI arguments
+./resnet50_benchmark \
+    --weight_path ../weights.bin \
+    --single_image ../images/dog.jpg \
+    --labels_path ../imagenet_classes.txt
 ```
 
-### Benchmark Mode
-
-```bash
-./resnet50_host --config config_fpga.yaml
-```
-
-The config file determines the mode based on whether `single_image` or `dataset_path` is provided.
-
-### Configuration Example
-
+**CPU Config Example (`config.yaml`):**
 ```yaml
-weight_path: /path/to/weights.bin
-xclbin_path: /path/to/binary_container_1.xclbin
-labels_path: /path/to/imagenet_classes.txt
-
-# For single inference
-single_image: /path/to/image.jpg
-
-# For benchmarking
-dataset_path: /path/to/imagenette2-320/val
-samples_per_class: 10
-output_csv: results.csv
+weight_path: ./weights.bin
+labels_path: ./imagenet_classes.txt
+single_image: ./images/apple.jpg
 ```
+
+### FPGA Mode
+
+For hardware-accelerated inference on ZCU102:
+
+```bash
+# On the board (after deployment)
+./resnet50_host --config /run/media/mmcblk0p1/config_fpga.yaml
+```
+
+**FPGA Config Example (`config_fpga.yaml`):**
+```yaml
+weight_path: /run/media/mmcblk0p1/resnet50/weights.bin
+xclbin_path: /run/media/mmcblk0p1/resnet50/binary_container_1.xclbin
+labels_path: /run/media/mmcblk0p1/resnet50/imagenet_classes.txt
+single_image: /run/media/mmcblk0p1/resnet50/images/apple.jpg
+```
+
+<Note>
+The `xclbin_path` parameter is **required** for FPGA mode. If omitted, the application falls back to CPU.
+</Note>
+
+---
+
+## Configuration Parameters
+
+| Parameter | Description | Required |
+|-----------|-------------|----------|
+| `weight_path` | Path to pre-trained weights binary | Yes |
+| `labels_path` | Path to ImageNet class labels file | Yes |
+| `xclbin_path` | Path to FPGA binary (`.xclbin`) | FPGA only |
+| `single_image` | Path to input image (JPG/PNG) | For single inference |
+| `dataset_path` | Path to ImageNette validation set | For benchmarking |
+| `samples_per_class` | Number of samples per class to test | For benchmarking |
+| `output_csv` | Path to save benchmark results | Optional |
+| `verbose` | Enable detailed logging (0 or 1) | Optional |
 
 ---
 

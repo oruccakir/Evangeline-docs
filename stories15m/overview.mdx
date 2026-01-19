@@ -151,24 +151,84 @@ ffn_out = (SiLU(W1 · x) ⊙ W3 · x) · W2
 
 ---
 
+## Building
+
+Before running inference, you need to build the application. See the [Build & Configuration](/architecture/build-and-config) guide for full details.
+
+### CPU-Only Build (Quick Test)
+
+```bash
+cd stories15M
+mkdir build && cd build
+cmake .. -DUSE_CPU_ONLY=ON
+make -j$(nproc)
+```
+
+### FPGA Build
+
+```bash
+./build.sh --config=build_configs/tinyllama_hw_build_v0/.yaml
+```
+
+<Tip>
+The FPGA build takes 4-8 hours. Use CPU builds for development and testing.
+</Tip>
+
+---
+
 ## Running Inference
+
+### CPU Mode
+
+For quick testing without FPGA hardware:
 
 ```bash
 ./stories15m_host \
-    --weight_path /path/to/weights.bin \
-    --vocab_path /path/to/tokenizer.bin \
-    --xclbin /path/to/binary_container_1.xclbin \
+    --weight_path ../weights.bin \
+    --vocab_path ../tokenizer.bin \
     --max_seq 256 \
     --temp 0.8
 ```
 
-### CLI Options
+The model will prompt you for input and generate text token by token.
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--weight_path` | Path to model weights | Required |
-| `--vocab_path` | Path to tokenizer | Required |
-| `--xclbin` | FPGA binary path | CPU mode if omitted |
-| `--max_seq` | Maximum sequence length | 256 |
-| `--temp` | Sampling temperature | 0.8 |
-| `--color` | Enable colored output | Off |
+### FPGA Mode
+
+For hardware-accelerated inference on ZCU102:
+
+```bash
+# On the board (after deployment)
+./stories15m_host \
+    --weight_path /run/media/mmcblk0p1/stories15m/weights.bin \
+    --vocab_path /run/media/mmcblk0p1/stories15m/tokenizer.bin \
+    --xclbin /run/media/mmcblk0p1/stories15m/binary_container_1.xclbin \
+    --max_seq 256 \
+    --temp 0.8
+```
+
+<Note>
+The `--xclbin` parameter triggers FPGA mode. If omitted, the application runs on CPU.
+</Note>
+
+---
+
+## Configuration Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--weight_path` | Path to model weights binary | Required |
+| `--vocab_path` | Path to tokenizer/vocabulary file | Required |
+| `--xclbin` | Path to FPGA binary (`.xclbin`) | CPU mode if omitted |
+| `--max_seq` | Maximum sequence length for generation | 256 |
+| `--temp` | Sampling temperature (higher = more random) | 0.8 |
+| `--color` | Enable colored terminal output | Off |
+| `--print_softmax` | Print token probabilities | Off |
+
+### Temperature Guide
+
+| Value | Behavior |
+|-------|----------|
+| 0.0 | Greedy (always pick the most likely token) |
+| 0.5 | Balanced creativity |
+| 0.8 | Default, good for stories |
+| 1.0+ | Very creative/random |
