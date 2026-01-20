@@ -90,18 +90,23 @@ Output
 
 ```
 stories15M/
-├── CMakeLists.txt        # Build configuration
+├── CMakeLists.txt          # Build configuration
+├── config.yaml             # Runtime configuration file
+├── datasets/               # Evaluation datasets
+│   └── tinystories_val.txt # TinyStories validation set
 └── src/
-    ├── main.cpp              # Entry point
-    ├── decode.cpp            # Token-by-token decoding
-    ├── context.hpp           # Inference state (activations)
-    ├── weight.hpp            # Model weights structure
-    ├── tensor.hpp            # CPU tensors
-    ├── tensor_fpga.hpp       # FPGA tensor abstractions
-    ├── device.cpp            # CPU/FPGA device abstraction
-    ├── vocab.cpp             # Tokenizer
-    ├── benchmark.cpp         # Performance benchmarking
-    └── kernel_*.cpp          # HLS kernel sources
+    ├── main.cpp            # Unified entry point (inference + benchmark)
+    ├── decode.cpp          # Token-by-token decoding
+    ├── eval.cpp            # Perplexity evaluation
+    ├── eval.hpp            # Evaluation data structures
+    ├── config_parser.hpp   # YAML configuration parser
+    ├── context.hpp         # Inference state (activations)
+    ├── weight.hpp          # Model weights structure
+    ├── tensor.hpp          # CPU tensors
+    ├── tensor_fpga.hpp     # FPGA tensor abstractions
+    ├── device.cpp          # CPU/FPGA device abstraction
+    ├── vocab.cpp           # Tokenizer
+    └── kernel_*.cpp        # HLS kernel sources
 ```
 
 ---
@@ -176,7 +181,22 @@ The FPGA build takes 1 hour. Use CPU builds for development and testing.
 
 ---
 
-## Running Inference
+## Running Modes
+
+Stories15M supports two operating modes:
+- **Interactive Inference**: Generate text token-by-token
+- **Benchmark Mode**: Evaluate model accuracy (perplexity) on a dataset
+
+### Mode Selection
+
+| Condition | Mode |
+|-----------|------|
+| `--dataset_path` provided | Benchmark Mode (perplexity evaluation) |
+| No dataset path | Interactive Inference Mode |
+
+---
+
+## Interactive Inference
 
 ### CPU Mode
 
@@ -198,7 +218,7 @@ For hardware-accelerated inference on ZCU102:
 
 ```bash
 # On the board (after deployment)
-./stories15M_host \
+./main \
     --weight_path /run/media/mmcblk0p1/stories15m/weights.bin \
     --vocab_path /run/media/mmcblk0p1/stories15m/tokenizer.bin \
     --xclbin /run/media/mmcblk0p1/stories15m/binary_container_1.xclbin \
@@ -212,23 +232,182 @@ The `--xclbin` parameter triggers FPGA mode. If omitted, the application runs on
 
 ---
 
+## Benchmark Mode (Perplexity Evaluation)
+
+Evaluate model accuracy by computing **perplexity** on a test dataset.
+
+### What is Perplexity?
+
+Perplexity measures how well the model predicts the next token:
+- **Lower perplexity = better** (model is less "surprised" by the text)
+- A perplexity of 10 means the model is as uncertain as choosing from ~10 equally likely options
+
+**Formula:**
+```
+Perplexity = exp(Average Cross-Entropy Loss)
+Cross-Entropy Loss = -log(P(correct_next_token))
+```
+
+### Running Benchmark
+
+```bash
+./main \
+    --weight_path ../../models/stories15M/weights.bin \
+    --vocab_path ../../models/stories15M/tokenizer.bin \
+    --dataset_path ../datasets/tinystories_val.txt \
+    --output_csv results.csv
+```
+
+### Using Config File
+
+Create a `config.yaml`:
+
+```yaml
+weight_path: ../../models/stories15M/weights.bin
+vocab_path: ../../models/stories15M/tokenizer.bin
+dataset_path: ../datasets/tinystories_val.txt
+max_seq: 256
+stride: 128
+max_samples: 100
+temperature: 0.5
+output_csv: results.csv
+verbose: 1
+```
+
+Run with config:
+
+```bash
+./main --config ../config.yaml
+```
+
+<Tip>
+CLI arguments override config file values. Use `--max_samples 10` for quick tests.
+</Tip>
+
+### Benchmark Output
+
+```
+========================================
+    Stories15M Perplexity Evaluation
+        Mode: CPU
+========================================
+
+Results:
+  Perplexity:        10.21
+  Avg Loss (nats):   2.32
+  Bits per byte:     3.35
+
+Statistics:
+  Total tokens:      2445
+  Sequences:         20
+  Total time:        157.33 s
+  Throughput:        15.54 tok/s
+========================================
+```
+
+### Output Metrics
+
+| Metric | Description |
+|--------|-------------|
+| **Perplexity** | Lower is better. Typical LLMs: 5-20 |
+| **Avg Loss** | Cross-entropy loss in nats |
+| **Bits per byte** | Information-theoretic compression metric |
+| **Throughput** | Tokens processed per second |
+
+### Sliding Window (Stride)
+
+For texts longer than `max_seq`, a sliding window is used:
+
+```
+Text: [0 -------- 255][256 -------- 500]  (500 tokens)
+
+With max_seq=256, stride=128:
+  Window 1: tokens [0   - 255]
+  Window 2: tokens [128 - 383]  ← 50% overlap
+  Window 3: tokens [256 - 500]
+```
+
+| Stride Setting | Behavior |
+|----------------|----------|
+| `stride = max_seq` | No overlap (faster) |
+| `stride = max_seq/2` | 50% overlap (default, balanced) |
+| `stride = 1` | Maximum overlap (slowest, most accurate) |
+
+---
+
+## Getting a Dataset
+
+Download TinyStories validation set from HuggingFace:
+
+```bash
+pip install datasets
+
+python -c "
+from datasets import load_dataset
+ds = load_dataset('roneneldan/TinyStories', split='validation[:1000]')
+with open('tinystories_val.txt', 'w') as f:
+    for item in ds:
+        f.write(item['text'].replace('\n', ' ') + '\n')
+"
+```
+
+---
+
 ## Configuration Parameters
+
+### All Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `--config` | Path to YAML config file | None |
 | `--weight_path` | Path to model weights binary | Required |
-| `--vocab_path` | Path to tokenizer/vocabulary file | Required |
-| `--xclbin` | Path to FPGA binary (`.xclbin`) | CPU mode if omitted |
-| `--max_seq` | Maximum sequence length for generation | 256 |
-| `--temp` | Sampling temperature (higher = more random) | 0.8 |
+| `--vocab_path` | Path to tokenizer file | Required |
+| `--xclbin` | Path to FPGA binary (`.xclbin`) | CPU mode |
+| `--dataset_path` | Path to evaluation dataset | Inference mode |
+| `--max_seq` | Maximum sequence length | 256 |
+| `--temp` | Sampling temperature | 0.5 |
+| `--stride` | Sliding window stride for eval | 128 |
+| `--max_samples` | Max samples to evaluate (0=all) | 0 |
+| `--output_csv` | CSV output path for results | None |
+| `--verbose` | Enable verbose output | Off |
 | `--color` | Enable colored terminal output | Off |
-| `--print_softmax` | Print token probabilities | Off |
 
 ### Temperature Guide
 
 | Value | Behavior |
 |-------|----------|
 | 0.0 | Greedy (always pick the most likely token) |
-| 0.5 | Balanced creativity |
-| 0.8 | Default, good for stories |
+| 0.5 | Balanced creativity (default) |
+| 0.8 | Good for creative stories |
 | 1.0+ | Very creative/random |
+
+---
+
+## Example Workflows
+
+### Quick Perplexity Test
+
+```bash
+./main --config ../config.yaml --max_samples 10
+```
+
+### Full Evaluation with CSV Export
+
+```bash
+./main \
+    --weight_path ../../models/stories15M/weights.bin \
+    --vocab_path ../../models/stories15M/tokenizer.bin \
+    --dataset_path ../datasets/tinystories_val.txt \
+    --max_samples 1000 \
+    --output_csv benchmark_results.csv
+```
+
+### Interactive Story Generation
+
+```bash
+./main \
+    --weight_path ../../models/stories15M/weights.bin \
+    --vocab_path ../../models/stories15M/tokenizer.bin \
+    --temp 0.8 \
+    --color
+```
